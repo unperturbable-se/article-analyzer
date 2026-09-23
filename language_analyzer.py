@@ -56,6 +56,7 @@ def tfidf(vectors):
       if vectors[j][i]>0:
         df+=1
     idf=math.log(numDocuments/df)
+    if idf==0 : idf=1
     for j in range(numDocuments):
       vectors[j][i]*=idf
 
@@ -69,7 +70,7 @@ def vectorize_documents(documents):
     hash_vocabulary()
     vectors=[[]]*len(documents)
     for i in range(len(documents)):
-    vectors[i]=vectorize_tokens(intermediate[i])
+      vectors[i]=vectorize_tokens(intermediate[i])
     tfidf(vectors)
     return vectors
 
@@ -88,4 +89,16 @@ def printSimilarityMatrix(vectors):
             similarityScore=checkSimilarity(vectors[i],vectors[j])
             print(f"the documents are {similarityScore*100}% similar")
 
+def returnSimilarityMatrix(vectors):
+    matrix=[]
+    for i in range(len(vectors)):
+          arr=[]
+          for j in range(len(vectors)):
+              print("Comparing document ",i," with document ",j,":",end=" ")
+              similarityScore=checkSimilarity(vectors[i],vectors[j])
+              print(f"the documents are {similarityScore*100}% similar")
+              arr.append(similarityScore)
+          matrix.append(arr)
+    
+    return matrix
 

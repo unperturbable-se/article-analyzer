@@ -1,5 +1,5 @@
-// Point this at your FastAPI route. Not shown in the UI — set it here once.
-const ENDPOINT = 'http://localhost:8000/analyze';
+// Base URL pointing to your FastAPI instance
+const BASE_URL = 'http://localhost:8000';
 
 const entriesEl = document.getElementById('entries');
 const addBtn = document.getElementById('addBtn');
@@ -67,7 +67,7 @@ function addEntry(focus) {
 
 addBtn.addEventListener('click', () => addEntry(true));
 
-// start with one entry
+// Start with one entry
 addEntry(false);
 
 function setStatus(text, kind) {
@@ -76,53 +76,111 @@ function setStatus(text, kind) {
   if (kind) statusEl.classList.add(kind === 'error' ? 'is-error' : 'is-success');
 }
 
-function renderResults(data) {
+function renderResults(data, originalTexts) {
   resultsEl.innerHTML = '';
   resultsEl.hidden = false;
 
-  const title = document.createElement('h2');
-  title.className = 'results-title';
-  title.textContent = 'Grouped by topic';
-  resultsEl.appendChild(title);
+  // Render Topic Groups / Clusters if present
+  if (data.clusters || data.groups) {
+    const title = document.createElement('h2');
+    title.className = 'results-title';
+    title.textContent = 'Grouped by topic';
+    resultsEl.appendChild(title);
 
-  const sub = document.createElement('p');
-  sub.className = 'results-sub';
-  const groups = Array.isArray(data.groups) ? data.groups : Array.isArray(data) ? data : [];
-  sub.textContent = groups.length + (groups.length === 1 ? ' topic found.' : ' topics found.');
-  resultsEl.appendChild(sub);
+    const groups = data.clusters || data.groups || [];
+    const sub = document.createElement('p');
+    sub.className = 'results-sub';
+    sub.textContent = groups.length + (groups.length === 1 ? ' topic found.' : ' topics found.');
+    resultsEl.appendChild(sub);
 
-  const originalTexts = entries.map(e => e.textarea.value.trim());
+    groups.forEach(group => {
+      const g = document.createElement('div');
+      g.className = 'group';
 
-  groups.forEach(group => {
-    const g = document.createElement('div');
-    g.className = 'group';
+      const topic = document.createElement('h3');
+      topic.className = 'group-topic';
+      
+      // Topic title incorporating extracted TF-IDF keywords if returned
+      const keywords = Array.isArray(group.keywords) ? ` [${group.keywords.join(', ')}]` : '';
+      topic.textContent = (group.topic || group.name || group.label || `Cluster ${group.cluster_id || ''}`) + keywords;
+      g.appendChild(topic);
 
-    const topic = document.createElement('h3');
-    topic.className = 'group-topic';
-    topic.textContent = group.topic || group.name || group.label || 'Untitled topic';
-    g.appendChild(topic);
+      const ul = document.createElement('ul');
+      let passageTexts = [];
 
-    const ul = document.createElement('ul');
-    let passageTexts = [];
+      if (Array.isArray(group.documents)) {
+        passageTexts = group.documents.map(i => originalTexts[i] ?? (`Passage ${i + 1}`));
+      } else if (Array.isArray(group.passages)) {
+        passageTexts = group.passages.map(p => typeof p === 'number' ? originalTexts[p] : p);
+      }
 
-    if (Array.isArray(group.passages)) {
-      passageTexts = group.passages.map(p => {
-        if (typeof p === 'number') return originalTexts[p] ?? ('Passage ' + (p + 1));
-        return p;
+      passageTexts.forEach(text => {
+        const li = document.createElement('li');
+        li.textContent = text.length > 180 ? text.slice(0, 180) + '…' : text;
+        ul.appendChild(li);
       });
-    } else if (Array.isArray(group.indices)) {
-      passageTexts = group.indices.map(i => originalTexts[i] ?? ('Passage ' + (i + 1)));
-    }
 
-    passageTexts.forEach(text => {
-      const li = document.createElement('li');
-      li.textContent = text.length > 180 ? text.slice(0, 180) + '…' : text;
-      ul.appendChild(li);
+      g.appendChild(ul);
+      resultsEl.appendChild(g);
     });
+  }
 
-    g.appendChild(ul);
-    resultsEl.appendChild(g);
-  });
+  // Render Pairwise Similarity Matrix
+  const matrix = data.similarity_matrix || (Array.isArray(data) && Array.isArray(data[0]) ? data : null);
+  if (matrix) {
+    const matrixTitle = document.createElement('h2');
+    matrixTitle.className = 'results-title';
+    matrixTitle.style.marginTop = '2rem';
+    matrixTitle.textContent = 'Pairwise Cosine Similarity Grid';
+    resultsEl.appendChild(matrixTitle);
+
+    const table = document.createElement('table');
+    table.className = 'similarity-table';
+    table.style.width = '100%';
+    table.style.borderCollapse = 'collapse';
+    table.style.marginTop = '1rem';
+
+    // Header Row
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    headerRow.appendChild(document.createElement('th')); // Blank top-left corner
+    matrix.forEach((_, idx) => {
+      const th = document.createElement('th');
+      th.textContent = `P${idx + 1}`;
+      th.style.padding = '8px';
+      th.style.borderBottom = '2px solid #ccc';
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    // Matrix Rows
+    const tbody = document.createElement('tbody');
+    matrix.forEach((row, rowIdx) => {
+      const tr = document.createElement('tr');
+      const rowHeader = document.createElement('td');
+      rowHeader.textContent = `P${rowIdx + 1}`;
+      rowHeader.style.fontWeight = 'bold';
+      rowHeader.style.padding = '8px';
+      tr.appendChild(rowHeader);
+
+      row.forEach((val) => {
+        const td = document.createElement('td');
+        const score = typeof val === 'number' ? val.toFixed(3) : val;
+        td.textContent = score;
+        td.style.padding = '8px';
+        td.style.textAlign = 'center';
+        // Simple background highlight for high similarity scores
+        if (typeof val === 'number' && val > 0.1 && rowIdx !== row.indexOf(val)) {
+          td.style.backgroundColor = 'rgba(74, 144, 226, 0.15)';
+        }
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    resultsEl.appendChild(table);
+  }
 }
 
 function renderError(message) {
@@ -156,21 +214,43 @@ submitBtn.addEventListener('click', async () => {
   resultsEl.hidden = true;
 
   try {
-    const res = await fetch(ENDPOINT, {
+    // 1. Vectorize documents via FastAPI POST endpoint
+    const vectorizeRes = await fetch(`${BASE_URL}/vectorize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passages })
+      body: JSON.stringify(passages) // Sends raw list of strings to Body(...)
     });
 
-    if (!res.ok) {
-      throw new Error('Server responded with status ' + res.status);
+    if (!vectorizeRes.ok) {
+      throw new Error(`Vectorize endpoint failed with status ${vectorizeRes.status}`);
     }
 
-    const data = await res.json();
-    renderResults(data);
-    setStatus('Done. Grouped ' + passages.length + ' passages.', 'success');
+    const vectors = await vectorizeRes.json();
+
+    // 2. Compute full pairwise similarity matrix via /compare_all
+    const matrixRes = await fetch(`${BASE_URL}/compare_all`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(vectors) // Sends vector matrix to Body(...)
+    });
+
+    if (!matrixRes.ok) {
+      throw new Error(`Compare endpoint failed with status ${matrixRes.status}`);
+    }
+
+    const similarityMatrix = await matrixRes.json();
+
+    // Combine results into a single object for rendering
+    const responseData = {
+      similarity_matrix: similarityMatrix,
+      // If vectors was directly returned as a array or dictionary
+      vectors: vectors
+    };
+
+    renderResults(responseData, passages);
+    setStatus('Done. Processed ' + passages.length + ' passages.', 'success');
   } catch (err) {
-    renderError(err.message + ' Check that the API is running at ' + ENDPOINT + '.');
+    renderError(err.message + ' Check that your FastAPI server is running at ' + BASE_URL + '.');
     setStatus('Something went wrong.', 'error');
   } finally {
     submitBtn.disabled = false;
