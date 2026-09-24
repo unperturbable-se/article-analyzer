@@ -1,5 +1,5 @@
 // Base URL pointing to your FastAPI instance
-const BASE_URL = 'http://localhost:8000';
+const BASE_URL = 'https://articlesanalyzer.onrender.com';
 
 const entriesEl = document.getElementById('entries');
 const addBtn = document.getElementById('addBtn');
@@ -8,8 +8,17 @@ const countEl = document.getElementById('count');
 const statusEl = document.getElementById('status');
 const resultsEl = document.getElementById('results');
 
+// Loading Indicator Elements
+const loadingIndicator = document.getElementById('loadingIndicator');
+const loadingMessage = document.getElementById('loadingMessage');
+
 let nextId = 0;
 let entries = []; // { id, el, textarea, numEl, removeBtn }
+
+// Ping the Render backend on page load to pre-warm the connection
+document.addEventListener('DOMContentLoaded', () => {
+  fetch(`${BASE_URL}/docs`, { mode: 'no-cors' }).catch(() => {});
+});
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
@@ -67,13 +76,27 @@ function addEntry(focus) {
 
 addBtn.addEventListener('click', () => addEntry(true));
 
-// Start with one entry
+// Initialize with one entry
 addEntry(false);
 
 function setStatus(text, kind) {
+  if (!statusEl) return;
   statusEl.textContent = text || '';
   statusEl.classList.remove('is-error', 'is-success');
   if (kind) statusEl.classList.add(kind === 'error' ? 'is-error' : 'is-success');
+}
+
+function showLoading(initialMsg) {
+  if (loadingMessage) loadingMessage.textContent = initialMsg || 'Processing passages…';
+  if (loadingIndicator) loadingIndicator.hidden = false;
+}
+
+function updateLoadingMessage(msg) {
+  if (loadingMessage) loadingMessage.textContent = msg;
+}
+
+function hideLoading() {
+  if (loadingIndicator) loadingIndicator.hidden = true;
 }
 
 function renderResults(data, originalTexts) {
@@ -100,7 +123,6 @@ function renderResults(data, originalTexts) {
       const topic = document.createElement('h3');
       topic.className = 'group-topic';
       
-      // Topic title incorporating extracted TF-IDF keywords if returned
       const keywords = Array.isArray(group.keywords) ? ` [${group.keywords.join(', ')}]` : '';
       topic.textContent = (group.topic || group.name || group.label || `Cluster ${group.cluster_id || ''}`) + keywords;
       g.appendChild(topic);
@@ -170,7 +192,6 @@ function renderResults(data, originalTexts) {
         td.textContent = score;
         td.style.padding = '8px';
         td.style.textAlign = 'center';
-        // Simple background highlight for high similarity scores
         if (typeof val === 'number' && val > 0.1 && rowIdx !== row.indexOf(val)) {
           td.style.backgroundColor = 'rgba(74, 144, 226, 0.15)';
         }
@@ -189,13 +210,52 @@ function renderError(message) {
   const box = document.createElement('div');
   box.className = 'error-box';
   const strong = document.createElement('strong');
-  strong.textContent = "Couldn't reach the endpoint.";
+  strong.textContent = "Analysis Failed";
   const p = document.createElement('p');
   p.style.margin = '0';
   p.textContent = message;
   box.appendChild(strong);
   box.appendChild(p);
   resultsEl.appendChild(box);
+}
+
+// Custom API fetch wrapper with timeout & error handling
+async function apiPost(endpoint, bodyData, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(`${BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(bodyData),
+      signal: controller.signal
+    });
+
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      let errDetail = '';
+      try {
+        const errJson = await res.json();
+        errDetail = errJson.detail || JSON.stringify(errJson);
+      } catch {
+        errDetail = await res.text();
+      }
+      throw new Error(`HTTP ${res.status}: ${errDetail || res.statusText}`);
+    }
+
+    return await res.json();
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeoutMs / 1000} seconds.`);
+    }
+    throw err;
+  }
 }
 
 submitBtn.addEventListener('click', async () => {
@@ -213,46 +273,34 @@ submitBtn.addEventListener('click', async () => {
   setStatus('Analyzing ' + passages.length + ' passage' + (passages.length === 1 ? '' : 's') + '…');
   resultsEl.hidden = true;
 
+  showLoading('Analyzing passages…');
+
+  const coldStartTimer = setTimeout(() => {
+    updateLoadingMessage('Server is responding slowly, please wait…');
+  }, 3000);
+
   try {
-    // 1. Vectorize documents via FastAPI POST endpoint
-    const vectorizeRes = await fetch(`${BASE_URL}/vectorize`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(passages) // Sends raw list of strings to Body(...)
-    });
+    // 1. Send passages to /vectorize
+    const vectors = await apiPost('/vectorize', passages);
 
-    if (!vectorizeRes.ok) {
-      throw new Error(`Vectorize endpoint failed with status ${vectorizeRes.status}`);
-    }
+    // 2. Send vectors to /compare_all
+    const similarityMatrix = await apiPost('/compare_all', vectors);
 
-    const vectors = await vectorizeRes.json();
-
-    // 2. Compute full pairwise similarity matrix via /compare_all
-    const matrixRes = await fetch(`${BASE_URL}/compare_all`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(vectors) // Sends vector matrix to Body(...)
-    });
-
-    if (!matrixRes.ok) {
-      throw new Error(`Compare endpoint failed with status ${matrixRes.status}`);
-    }
-
-    const similarityMatrix = await matrixRes.json();
-
-    // Combine results into a single object for rendering
+    // Combine and render
     const responseData = {
       similarity_matrix: similarityMatrix,
-      // If vectors was directly returned as a array or dictionary
       vectors: vectors
     };
 
     renderResults(responseData, passages);
     setStatus('Done. Processed ' + passages.length + ' passages.', 'success');
   } catch (err) {
-    renderError(err.message + ' Check that your FastAPI server is running at ' + BASE_URL + '.');
+    console.error('API Processing Error:', err);
+    renderError(err.message || 'Failed to communicate with backend.');
     setStatus('Something went wrong.', 'error');
   } finally {
+    clearTimeout(coldStartTimer);
+    hideLoading();
     submitBtn.disabled = false;
     submitBtn.textContent = 'Analyze passages';
   }
