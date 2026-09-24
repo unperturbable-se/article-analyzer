@@ -35,6 +35,8 @@ def expand_vocabulary(clean_tokenized):
 def hash_vocabulary():
   for [count,key] in enumerate(vocabulary):
    vocabulary[key]=count
+def reset_vocabulary():
+    vocabulary.clear()
 
 
 #vectorization

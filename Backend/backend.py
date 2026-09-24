@@ -1,6 +1,6 @@
 from fastapi import FastAPI,Body
 from fastapi.middleware.cors import CORSMiddleware
-from language_analyzer import vectorize_documents, checkSimilarity, returnSimilarityMatrix
+from language_analyzer import vectorize_documents, checkSimilarity, returnSimilarityMatrix, reset_vocabulary
 
 app=FastAPI()
 app.add_middleware(
@@ -21,4 +21,6 @@ def v1(a:str=Body(...),b:str=Body(...)):
 
 @app.post("/compare_all")
 def v2(vectors: list[list[float]]=Body(...)):
-    return returnSimilarityMatrix(vectors)
+    m=returnSimilarityMatrix(vectors)
+    reset_vocabulary()
+    return m
