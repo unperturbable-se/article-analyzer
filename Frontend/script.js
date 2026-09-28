@@ -1,5 +1,4 @@
-// Base URL pointing to your FastAPI instance
-const BASE_URL = 'https://articlesanalyzer.onrender.com';
+const BASE_URL = 'http://127.0.0.1:8000';
 
 const entriesEl = document.getElementById('entries');
 const addBtn = document.getElementById('addBtn');
@@ -7,26 +6,21 @@ const submitBtn = document.getElementById('submitBtn');
 const countEl = document.getElementById('count');
 const statusEl = document.getElementById('status');
 const resultsEl = document.getElementById('results');
-
-// Loading Indicator Elements
 const loadingIndicator = document.getElementById('loadingIndicator');
 const loadingMessage = document.getElementById('loadingMessage');
 
 let nextId = 0;
-let entries = []; // { id, el, textarea, numEl, removeBtn }
+let entries = [];
 
-// Ping the Render backend on page load to pre-warm the connection
 document.addEventListener('DOMContentLoaded', () => {
   fetch(`${BASE_URL}/docs`, { mode: 'no-cors' }).catch(() => {});
 });
 
-function pad(n) { return String(n).padStart(2, '0'); }
+const pad = n => String(n).padStart(2, '0');
 
 function renumber() {
   entries.forEach((entry, i) => {
     entry.numEl.textContent = 'Passage ' + pad(i + 1);
-  });
-  entries.forEach(entry => {
     entry.removeBtn.disabled = entries.length <= 1;
   });
   countEl.textContent = entries.length === 1
@@ -54,14 +48,11 @@ function addEntry(focus) {
   const textarea = document.createElement('textarea');
   textarea.placeholder = 'Paste or write the passage here…';
 
-  head.appendChild(num);
-  head.appendChild(removeBtn);
-  wrap.appendChild(head);
-  wrap.appendChild(textarea);
+  head.append(num, removeBtn);
+  wrap.append(head, textarea);
   entriesEl.appendChild(wrap);
 
-  const entry = { id, el: wrap, textarea, numEl: num, removeBtn };
-  entries.push(entry);
+  entries.push({ id, el: wrap, textarea, numEl: num, removeBtn });
 
   removeBtn.addEventListener('click', () => {
     if (entries.length <= 1) return;
@@ -75,8 +66,6 @@ function addEntry(focus) {
 }
 
 addBtn.addEventListener('click', () => addEntry(true));
-
-// Initialize with one entry
 addEntry(false);
 
 function setStatus(text, kind) {
@@ -86,8 +75,8 @@ function setStatus(text, kind) {
   if (kind) statusEl.classList.add(kind === 'error' ? 'is-error' : 'is-success');
 }
 
-function showLoading(initialMsg) {
-  if (loadingMessage) loadingMessage.textContent = initialMsg || 'Processing passages…';
+function showLoading(msg) {
+  if (loadingMessage) loadingMessage.textContent = msg || 'Processing passages…';
   if (loadingIndicator) loadingIndicator.hidden = false;
 }
 
@@ -103,52 +92,38 @@ function renderResults(data, originalTexts) {
   resultsEl.innerHTML = '';
   resultsEl.hidden = false;
 
-  // Render Topic Groups / Clusters if present
-  if (data.clusters || data.groups) {
+  if (data.cluster || data.topics) {
     const title = document.createElement('h2');
     title.className = 'results-title';
-    title.textContent = 'Grouped by topic';
+    title.textContent = 'Topic Analysis';
     resultsEl.appendChild(title);
 
-    const groups = data.clusters || data.groups || [];
-    const sub = document.createElement('p');
-    sub.className = 'results-sub';
-    sub.textContent = groups.length + (groups.length === 1 ? ' topic found.' : ' topics found.');
-    resultsEl.appendChild(sub);
+    if (data.cluster) {
+      const clusterBox = document.createElement('div');
+      clusterBox.className = 'group';
+      clusterBox.innerHTML = `<h3 class="group-topic">Cluster Root Topic: ${data.cluster}</h3>`;
+      resultsEl.appendChild(clusterBox);
+    }
 
-    groups.forEach(group => {
+    if (data.topics) {
       const g = document.createElement('div');
       g.className = 'group';
+      const shared = Array.isArray(data.topics['shared topic'])
+        ? data.topics['shared topic'].join(', ')
+        : data.topics['shared topic'];
 
-      const topic = document.createElement('h3');
-      topic.className = 'group-topic';
-      
-      const keywords = Array.isArray(group.keywords) ? ` [${group.keywords.join(', ')}]` : '';
-      topic.textContent = (group.topic || group.name || group.label || `Cluster ${group.cluster_id || ''}`) + keywords;
-      g.appendChild(topic);
-
-      const ul = document.createElement('ul');
-      let passageTexts = [];
-
-      if (Array.isArray(group.documents)) {
-        passageTexts = group.documents.map(i => originalTexts[i] ?? (`Passage ${i + 1}`));
-      } else if (Array.isArray(group.passages)) {
-        passageTexts = group.passages.map(p => typeof p === 'number' ? originalTexts[p] : p);
-      }
-
-      passageTexts.forEach(text => {
-        const li = document.createElement('li');
-        li.textContent = text.length > 180 ? text.slice(0, 180) + '…' : text;
-        ul.appendChild(li);
+      let html = `<h3 class="group-topic">Shared Topic: ${shared}</h3><ul>`;
+      data.topics['per document'].forEach((topic, i) => {
+        const keywords = (topic['Top Keywords'] || []).join(', ');
+        html += `<li><strong>P${i + 1}:</strong> ${topic.Topic} (${keywords}) — <span style="color:#666;">${originalTexts[i]?.slice(0, 60)}…</span></li>`;
       });
-
-      g.appendChild(ul);
+      html += '</ul>';
+      g.innerHTML = html;
       resultsEl.appendChild(g);
-    });
+    }
   }
 
-  // Render Pairwise Similarity Matrix
-  const matrix = data.similarity_matrix || (Array.isArray(data) && Array.isArray(data[0]) ? data : null);
+  const matrix = data.similarity_matrix;
   if (matrix) {
     const matrixTitle = document.createElement('h2');
     matrixTitle.className = 'results-title';
@@ -162,10 +137,9 @@ function renderResults(data, originalTexts) {
     table.style.borderCollapse = 'collapse';
     table.style.marginTop = '1rem';
 
-    // Header Row
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    headerRow.appendChild(document.createElement('th')); // Blank top-left corner
+    headerRow.appendChild(document.createElement('th'));
     matrix.forEach((_, idx) => {
       const th = document.createElement('th');
       th.textContent = `P${idx + 1}`;
@@ -176,7 +150,6 @@ function renderResults(data, originalTexts) {
     thead.appendChild(headerRow);
     table.appendChild(thead);
 
-    // Matrix Rows
     const tbody = document.createElement('tbody');
     matrix.forEach((row, rowIdx) => {
       const tr = document.createElement('tr');
@@ -186,13 +159,12 @@ function renderResults(data, originalTexts) {
       rowHeader.style.padding = '8px';
       tr.appendChild(rowHeader);
 
-      row.forEach((val) => {
+      row.forEach((val, colIdx) => {
         const td = document.createElement('td');
-        const score = typeof val === 'number' ? val.toFixed(3) : val;
-        td.textContent = score;
+        td.textContent = typeof val === 'number' ? val.toFixed(3) : val;
         td.style.padding = '8px';
         td.style.textAlign = 'center';
-        if (typeof val === 'number' && val > 0.1 && rowIdx !== row.indexOf(val)) {
+        if (typeof val === 'number' && val > 0.1 && rowIdx !== colIdx) {
           td.style.backgroundColor = 'rgba(74, 144, 226, 0.15)';
         }
         tr.appendChild(td);
@@ -209,17 +181,10 @@ function renderError(message) {
   resultsEl.hidden = false;
   const box = document.createElement('div');
   box.className = 'error-box';
-  const strong = document.createElement('strong');
-  strong.textContent = "Analysis Failed";
-  const p = document.createElement('p');
-  p.style.margin = '0';
-  p.textContent = message;
-  box.appendChild(strong);
-  box.appendChild(p);
+  box.innerHTML = `<strong>Analysis Failed</strong><p style="margin:0;">${message}</p>`;
   resultsEl.appendChild(box);
 }
 
-// Custom API fetch wrapper with timeout & error handling
 async function apiPost(endpoint, bodyData, timeoutMs = 30000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -270,9 +235,8 @@ submitBtn.addEventListener('click', async () => {
 
   submitBtn.disabled = true;
   submitBtn.textContent = 'Analyzing…';
-  setStatus('Analyzing ' + passages.length + ' passage' + (passages.length === 1 ? '' : 's') + '…');
+  setStatus('Analyzing ' + passages.length + ' passage(s)…');
   resultsEl.hidden = true;
-
   showLoading('Analyzing passages…');
 
   const coldStartTimer = setTimeout(() => {
@@ -280,19 +244,15 @@ submitBtn.addEventListener('click', async () => {
   }, 3000);
 
   try {
-    // 1. Send passages to /vectorize
+    await apiPost('/reset', {});
     const vectors = await apiPost('/vectorize', passages);
 
-    // 2. Send vectors to /compare_all
-    const similarityMatrix = await apiPost('/compare_all', vectors);
+    const [similarityMatrix, topics] = await Promise.all([
+      apiPost('/compare_all', vectors),
+      apiPost('/get_topics', vectors)
+    ]);
 
-    // Combine and render
-    const responseData = {
-      similarity_matrix: similarityMatrix,
-      vectors: vectors
-    };
-
-    renderResults(responseData, passages);
+    renderResults({ similarity_matrix: similarityMatrix, topics }, passages);
     setStatus('Done. Processed ' + passages.length + ' passages.', 'success');
   } catch (err) {
     console.error('API Processing Error:', err);

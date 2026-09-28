@@ -1,7 +1,11 @@
 import requests
 import math
 import numpy as np
-from nltk.corpus import wordnet as wn  
+import nltk
+from nltk.corpus import wordnet as wn 
+from collections import Counter
+
+nltk.download('wordnet')
 
 #tokenization
 def tokenize(text):
@@ -111,37 +115,29 @@ def ancestors(word: str) -> set:
               for a in path}
 
 def find_root_word(words: list[str]) -> str | None:
-    common = set.intersection(*map(ancestors, words)) if words else set()
-    if not common:
+    sets = [a for a in map(ancestors, [w for w in words if w]) if a]
+    if not sets:
         return None
+    counts = Counter(s for a in sets for s in a)
+    need = min(2, len(sets))
+    common = [s for s, c in counts.items() if c >= need]
     return max(common, key=lambda s: (s.min_depth(), s.name())).lemmas()[0].name()
 #-------------------------------------------------------------------
-def get_topic(vector: np.array):
-  top_indeces=np.argsort(vector)[::-1]
-  top_indeces=top_indeces[0:min(5,len(top_indeces))]
-  top_words=[]
-  vocab_list=list(vocabulary.keys())
-  for index in top_indeces:
-    if(vector[index]>0):
-      top_words.append(vocab_list[index])
-  root_word=find_root_word(top_words)
-  return{
-      "Topic":root_word,
-      "Top Keywords": top_words
-  }
+def get_topic(vector: np.array) -> dict:
+    words = list(vocabulary)
+    top = np.argsort(vector)[::-1][:5]
+    top_words = [words[i] for i in top if vector[i] > 0 and i < len(words)]
+    nouns = [w for w in top_words if wn.synsets(w, pos=wn.NOUN)]
+    return {"Topic": nouns[0] if nouns else None, "Top Keywords": top_words}
 
-def get_topics(vectors: np.array(np.array)):
-  output={
-    "shared topic":[]
-    "per document":[]
-  }
-  key_words=[]
-  for vector in vectors:
-    topic=get_topic(vector)
-    output["per document"].append(topic)
-    key_words.append(topic)
-  output["shared topic"]=find_root_word(key_words)   
-  return output
+def get_topics(vectors: list[list]) -> dict:
+    per_doc = [get_topic(v) for v in vectors]
+    counts = Counter(w for t in per_doc for w in t["Top Keywords"])
+    shared = counts.most_common(1)[0][0] if counts else None
+    return {"shared topic": shared, "per document": per_doc}
 
-def getTopicClusters(vectors):
-  pass
+#def getTopicCluster(vectors:list[list])->str:
+  #key_words=[]
+  #for vector in vectors:
+     #key_words.extend(get_topic(vector)["Top Keywords"])
+  #return find_root_word(key_words)
