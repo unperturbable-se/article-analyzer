@@ -105,19 +105,16 @@ def returnSimilarityMatrix(vectors):
     
     return matrix
 #-------------------------------------------------------------------
-def find_root_word_helper(word1:str,word2:str)->str:
-  synset1=wn.synset(word1,wn.NOUN)
-  synset2=wn.synset(word2,wn.NOUN)
-  common_hypernyms=synset1.lowest_common_hypernyms(synset2)
-  hypernym=common_hypernyms[0]
-  return hypernym
+def ancestors(word: str) -> set:
+    return {a for s in wn.synsets(word, pos=wn.NOUN)
+              for path in s.hypernym_paths()
+              for a in path}
 
-def find_root_word(words:list[str]):
-  size=len(words)
-  if(size>2):
-    words=[find_root_word(words[0:size//2]),find_root_word(words[size//2:])]
-  return find_root_word_helper(words[0],words[1])
-  return 0
+def find_root_word(words: list[str]) -> str | None:
+    common = set.intersection(*map(ancestors, words)) if words else set()
+    if not common:
+        return None
+    return max(common, key=lambda s: (s.min_depth(), s.name())).lemmas()[0].name()
 #-------------------------------------------------------------------
 def get_topic(vector: np.array):
   top_indeces=np.argsort(vector)[::-1]
