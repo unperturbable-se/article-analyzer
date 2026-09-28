@@ -1,6 +1,6 @@
 from fastapi import FastAPI,Body
 from fastapi.middleware.cors import CORSMiddleware
-from language_analyzer import vectorize_documents, checkSimilarity, returnSimilarityMatrix, reset_vocabulary
+from language_analyzer import vectorize_documents, checkSimilarity, returnSimilarityMatrix, reset_vocabulary, get_topics, getTopicClusters
 
 app=FastAPI()
 app.add_middleware(
@@ -24,3 +24,12 @@ def v2(vectors: list[list[float]]=Body(...)):
     m=returnSimilarityMatrix(vectors)
     reset_vocabulary()
     return m
+
+@app.post("/get_topics")
+def v2(vectors: list[list[float]]=Body(...)):
+    return get_topics(vectors)
+
+
+@app.post("/get_topic_clusters")
+def v2(vectors: list[list[float]]=Body(...)):
+    return getTopicClusters(vectors)
