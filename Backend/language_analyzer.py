@@ -1,6 +1,7 @@
 import requests
 import math
 import numpy as np
+from nltk.corpus import wordnet as wn  
 
 #tokenization
 def tokenize(text):
@@ -62,7 +63,7 @@ def tfidf(vectors):
     for j in range(numDocuments):
       vectors[j][i]*=idf
 
-
+#-------------------------------------------------------------------
 def vectorize_documents(documents):
     intermediate=[[]]*len(documents)
     for i in range(len(documents)):
@@ -75,7 +76,7 @@ def vectorize_documents(documents):
       vectors[i]=vectorize_tokens(intermediate[i])
     tfidf(vectors)
     return vectors
-
+#-------------------------------------------------------------------
 
 def checkSimilarity(v0,v1):
   dotProduct=np.dot(v0,v1)
@@ -103,4 +104,47 @@ def returnSimilarityMatrix(vectors):
           matrix.append(arr)
     
     return matrix
+#-------------------------------------------------------------------
+def find_root_word_helper(word1:str,word2:str)->str:
+  synset1=wn.synset(word1,wn.NOUN)
+  synset2=wn.synset(word2,wn.NOUN)
+  common_hypernyms=synset1.lowest_common_hypernyms(synset2)
+  hypernym=common_hypernyms[0]
+  return hypernym
 
+def find_root_word(words:list[str]):
+  size=len(words)
+  if(size>2):
+    words=[find_root_word(words[0:size//2]),find_root_word(words[size//2:])]
+  return find_root_word_helper(words[0],words[1])
+  return 0
+#-------------------------------------------------------------------
+def get_topic(vector: np.array):
+  top_indeces=np.argsort(vector)[::-1]
+  top_indeces=top_indeces[0:min(5,len(top_indeces))]
+  top_words=[]
+  vocab_list=list(vocabulary.keys())
+  for index in top_indeces:
+    if(vector[index]>0):
+      top_words.append(vocab_list[index])
+  root_word=find_root_word(top_words)
+  return{
+      "Topic":root_word,
+      "Top Keywords": top_words
+  }
+
+def get_topics(vectors: np.array(np.array)):
+  output={
+    "shared topic":[]
+    "per document":[]
+  }
+  key_words=[]
+  for vector in vectors:
+    topic=get_topic(vector)
+    output["per document"].append(topic)
+    key_words.append(topic)
+  output["shared topic"]=find_root_word(key_words)   
+  return output
+
+def getTopicClusters(vectors):
+  pass
