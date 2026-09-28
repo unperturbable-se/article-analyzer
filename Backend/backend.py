@@ -25,11 +25,11 @@ def v2(vectors: list[list[float]]=Body(...)):
     reset_vocabulary()
     return m
 
-@app.post("/get_topics")
-def v2(vectors: list[list[float]]=Body(...)):
-    return get_topics(vectors)
-
-
-@app.post("/get_topic_clusters")
-def v2(vectors: list[list[float]]=Body(...)):
-    return getTopicClusters(vectors)
+#@app.post("/get_topics")
+#def v2(vectors: list[list[float]]=Body(...)):
+#    return get_topics(vectors)
+#
+#
+#@app.post("/get_topic_clusters")
+#def v2(vectors: list[list[float]]=Body(...)):
+#    return getTopicClusters(vectors)
