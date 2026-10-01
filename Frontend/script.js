@@ -1,4 +1,4 @@
-const BASE_URL = 'https://articlesanalyzer.onrender.com';
+const BASE_URL = 'https://unified-backend-68gc.onrender.com/api/article-analyzer';
 
 const entriesEl = document.getElementById('entries');
 const addBtn = document.getElementById('addBtn');
